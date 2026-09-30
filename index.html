@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Adivina el dibujo</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--bg:#fff8ec;--card:#fff;--ink:#22223b;--mut:#6b6b80;--acc:#ff6b35;--ok:#2a9d8f;--bd:#e6dcc8}
+@media (prefers-color-scheme:dark){:root{--bg:#171726;--card:#232338;--ink:#f3f0ff;--mut:#a5a5c0;--bd:#38385a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS",system-ui,sans-serif}
+.wrap{max-width:1150px;margin:0 auto;padding:14px}h1{margin:0 0 4px}
+.card{background:var(--card);border:2px solid var(--bd);border-radius:16px;padding:14px;margin-bottom:12px}
+textarea,input[type=text]{width:100%;padding:10px;border-radius:10px;border:2px solid var(--bd);background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:150px}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:10px 14px;cursor:pointer;background:var(--acc);color:#fff}
+button.alt{background:var(--card);color:var(--ink);border:2px solid var(--bd)}
+.hide{display:none!important}.mut{color:var(--mut)}
+.roles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}@media(max-width:700px){.roles{grid-template-columns:1fr}}
+.role{padding:22px 14px;text-align:center;font-size:1.1rem;line-height:1.5}.role span{display:block;font-size:2.4rem}
+.role small{font-weight:400;opacity:.9;display:block}
+.code{font:800 3rem "Courier New",monospace;letter-spacing:8px;color:var(--acc);text-align:center}
+.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.hint{font:800 1.7rem "Courier New",monospace;letter-spacing:5px;background:var(--card);border:2px dashed var(--acc);border-radius:12px;padding:6px 14px;white-space:pre-wrap}
+.timer{font-size:1.8rem;font-weight:800;color:var(--acc)}.timer.end{color:#d62828}
+.layout{display:grid;grid-template-columns:1fr 270px;gap:12px}@media(max-width:850px){.layout{grid-template-columns:1fr}}
+canvas{width:100%;aspect-ratio:12/7;background:#fff;border:3px solid var(--bd);border-radius:14px;touch-action:none;display:block}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.sw{width:30px;height:30px;border-radius:50%;border:3px solid var(--bd);padding:0}.sw.on{border-color:var(--ink);transform:scale(1.15)}
+.pl{display:flex;justify-content:space-between;padding:7px 9px;border-radius:10px;margin-bottom:5px;background:var(--bg)}
+.pl.ok{background:var(--ok);color:#fff}.pl.off{opacity:.45}.pts{font-weight:800}
+.row{display:flex;gap:8px;margin-top:8px}
+#feed{max-height:230px;overflow:auto}.fi{padding:5px 8px;margin-bottom:4px;border-radius:8px;background:var(--bg)}.fi.ok{background:var(--ok);color:#fff;font-weight:700}
+body.viewer .hint{font-size:2.4rem}body.viewer .pl,body.viewer .fi{font-size:1.2rem}
+</style></head><body><div class="wrap">
+<h1>🎨 Adivina el dibujo</h1>
+
+<div id="home"><p class="mut">Elige tu rol para empezar.</p>
+ <div class="roles">
+  <button class="role" data-r="host"><span>✏️</span>Dibujador<small>Crea la sala y elige las palabras</small></button>
+  <button class="role" data-r="player"><span>🙋</span>Jugador<small>Entra con código y adivina</small></button>
+  <button class="role" data-r="viewer"><span>📺</span>Visor<small>Solo mira, sin ver la palabra (para proyectar)</small></button>
+ </div></div>
+
+<div id="hostSetup" class="card hide">
+ <div class="mut" style="text-align:center">Código de invitación</div><div class="code" id="code">…</div>
+ <div class="row"><button class="alt" id="cpP">📋 Copiar enlace de jugadores</button><button class="alt" id="cpV">📋 Copiar enlace del visor</button></div>
+ <p id="hstat" class="mut"></p>
+ <b>Palabras (una por línea)</b><textarea id="words" placeholder="Semáforo&#10;Volcán&#10;Ecosistema"></textarea>
+ <p class="mut" id="lobby">Jugadores: ninguno · Visores: 0</p>
+ <button id="start">▶ Iniciar juego</button> <button class="alt" onclick="location.href=location.pathname">← Volver</button></div>
+
+<div id="joinf" class="card hide">
+ <b id="jtitle"></b>
+ <div class="row"><input type="text" id="codein" maxlength="5" placeholder="Código (5 caracteres)" style="text-transform:uppercase"></div>
+ <div class="row" id="nickrow"><input type="text" id="nick" maxlength="16" placeholder="Tu nombre"></div>
+ <p id="jerr" style="color:#d62828;font-weight:700"></p>
+ <button id="joinb">Entrar</button> <button class="alt" onclick="location.href=location.pathname">← Volver</button></div>
+
+<div id="game" class="hide">
+ <div class="top"><div class="mut" id="rinfo"></div><div class="hint" id="hint"></div>
+  <div><span class="timer" id="timer"></span> <button class="alt" id="fs">⛶</button></div></div>
+ <div id="wline" class="hide card">Palabra: <b id="wtxt">••••••</b> <button class="alt" id="wtog">👁 Ver</button></div>
+ <div class="layout"><div>
+  <canvas id="cv" width="1200" height="700"></canvas>
+  <div class="tools hide" id="tools"><button class="alt" id="eraser">🧽 Borrador</button><button class="alt" id="clear">🗑 Limpiar</button>
+   <label>Grosor <input type="range" id="size" min="2" max="40" value="6"></label></div>
+  <div id="gform" class="row hide"><input type="text" id="guess" placeholder="Escribe tu respuesta y Enter" autocomplete="off"><button id="gb">Enviar</button></div>
+  <div id="msg" style="font-weight:700;min-height:1.4em;margin-top:6px"></div></div>
+  <div><div class="card"><b>Marcador</b><div id="sb" style="margin-top:8px"></div></div>
+  <div class="card" id="feedc"><b>Respuestas en vivo</b><div id="feed" style="margin-top:8px"></div></div></div></div>
+</div>
+
+<div id="end" class="card hide" style="text-align:center"><h1>🏆 ¡Fin del juego!</h1><div id="rank"></div>
+ <button onclick="location.href=location.pathname">Inicio</button></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id),T=60;
+const cv=$("cv"),ctx=cv.getContext("2d"),SCR=["home","hostSetup","joinf","game","end"];
+const show=id=>SCR.forEach(i=>$(i).classList.toggle("hide",i!==id));
+const norm=s=>String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9ñ ]/g," ").replace(/\s+/g," ").trim();
+const clr=()=>{ctx.fillStyle="#fff";ctx.fillRect(0,0,1200,700)};clr();
+function seg(c,w,p){ctx.lineCap=ctx.lineJoin="round";ctx.strokeStyle=c;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(p[0],p[1]);
+ if(p.length<4)ctx.lineTo(p[0]+.01,p[1]);for(let i=2;i<p.length;i+=2)ctx.lineTo(p[i],p[i+1]);ctx.stroke()}
+function drawMsg(d){if(d.c==="!")clr();else seg(d.c,d.w,d.p)}
+let mode="",peer,conn,myName="",lastS={ph:"wait",sc:[]},wordShown=false,hostWord="";
+const params=new URLSearchParams(location.search);
+
+/* ---------- Pantalla de inicio ---------- */
+document.querySelectorAll(".role").forEach(b=>b.onclick=()=>pick(b.dataset.r));
+function pick(r){mode=r;document.body.className=r;
+ if(r==="host"){show("hostSetup");openHost()}
+ else{show("joinf");$("jtitle").textContent=r==="player"?"Entrar como jugador":"Entrar como visor (solo mirar)";
+  $("nickrow").classList.toggle("hide",r!=="player");if(params.get("c"))$("codein").value=params.get("c").toUpperCase()}}
+if(params.get("r")==="player"||params.get("r")==="viewer")pick(params.get("r"));
+
+/* ---------- Render común ---------- */
+function addFeed(f){const d=document.createElement("div");d.className="fi"+(f.ok?" ok":"");
+ d.textContent=f.ok?`✅ ${f.name} acertó`:`${f.name}: ${f.text}`;$("feed").prepend(d);while($("feed").children.length>40)$("feed").lastChild.remove()}
+function render(s){lastS=s;
+ if(s.ph==="end"){show("end");$("rank").innerHTML="";const sc=[...s.sc].sort((a,b)=>b[1]-a[1]),top=sc[0]?sc[0][1]:0;
+  sc.forEach((x,i)=>{const d=document.createElement("div");d.style.cssText="font-size:1.4rem;margin:8px";
+   d.textContent=`${["🥇","🥈","🥉"][i]||(i+1)+"."} ${x[0]} — ${x[1]} pts${i===0&&top>0?" 👑 ¡Ganador!":""}`;$("rank").append(d)});return}
+ show("game");
+ $("rinfo").textContent=s.ph==="wait"?"Esperando al dibujador…":`Ronda ${s.r} / ${s.n}`;
+ $("hint").textContent=s.ph==="rev"?s.w.toUpperCase():(s.h||"");
+ $("timer").textContent=s.ph==="play"?"⏱ "+s.l:(s.ph==="rev"?"¡Tiempo!":"");
+ $("timer").classList.toggle("end",s.ph==="play"&&s.l<=10);
+ if(mode==="host"){hostWord=s.hw||"";$("wtxt").textContent=wordShown?hostWord:"•".repeat(Math.max(hostWord.length,6))}
+ const mine=s.sc.find(x=>x[0]===myName);
+ $("gform").classList.toggle("hide",mode!=="player"||s.ph!=="play"||!mine||mine[2]);
+ if(mode==="player"){if(mine&&mine[2]&&s.ph==="play")$("msg").textContent="✅ ¡Acertaste! Espera a los demás…";
+  if(s.ph==="rev")$("msg").textContent=""}
+ $("sb").innerHTML="";[...s.sc].sort((a,b)=>b[1]-a[1]).forEach(x=>{const d=document.createElement("div");
+  d.className="pl"+(x[2]&&s.ph==="play"?" ok":"")+(x[3]?"":" off");const a=document.createElement("span"),b=document.createElement("span");
+  a.textContent=x[0];b.className="pts";b.textContent=x[1];d.append(a,b);$("sb").append(d)});
+ $("feedc").classList.toggle("hide",mode==="player")}
+$("fs").onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();
+
+/* ---------- Jugador / Visor ---------- */
+$("joinb").onclick=joinGame;$("codein").onkeydown=$("nick").onkeydown=e=>{if(e.key==="Enter")joinGame()};
+function joinGame(){const code=$("codein").value.trim().toUpperCase();myName=$("nick").value.trim();
+ if(code.length<4)return $("jerr").textContent="Escribe el código";if(mode==="player"&&!myName)return $("jerr").textContent="Escribe tu nombre";
+ $("jerr").textContent="Conectando…";if(peer)peer.destroy();peer=new Peer();
+ const fail=m=>{$("jerr").textContent=m;show("joinf")};
+ peer.on("error",e=>fail(e.type==="peer-unavailable"?"Código no encontrado. Revisa que el dibujador ya haya creado la sala.":"Error de conexión: "+e.type));
+ peer.on("open",()=>{conn=peer.connect("adivina-"+code,{reliable:true});
+  setTimeout(()=>{if(!conn.open)fail("No se pudo conectar. Intenta de nuevo.")},12000);
+  conn.on("open",()=>conn.send({t:"hello",role:mode,name:myName}));
+  conn.on("close",()=>{if(!$("end").classList.contains("hide"))return;$("rinfo").textContent="⚠️ Conexión perdida. Recarga la página."});
+  conn.on("data",d=>{
+   if(d.t==="err")fail(d.m);
+   else if(d.t==="ok"){clr();show("game");$("tools").classList.add("hide")}
+   else if(d.t==="hist")d.h.forEach(drawMsg);
+   else if(d.t==="d")drawMsg(d);
+   else if(d.t==="state")render(d.s);
+   else if(d.t==="feedclr")$("feed").innerHTML="";
+   else if(d.t==="feed")addFeed(d)})})}
+const send=()=>{const t=$("guess").value.trim();if(!t||!conn||!conn.open)return;conn.send({t:"guess",text:t});$("guess").value="";$("msg").textContent="Enviado: "+t};
+$("gb").onclick=send;$("guess").onkeydown=e=>{if(e.key==="Enter")send()};
+
+/* ---------- Dibujador (host y árbitro) ---------- */
+let code,conns=[],sc={},words=[],ri=0,word="",order=[],left=T,ph="wait",hist=[],pending=[],drawing=false,color="#000",erase=false;
+const makeCode=()=>{const a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";return Array.from({length:5},()=>a[Math.random()*a.length|0]).join("")};
+function openHost(){code=makeCode();if(peer)peer.destroy();peer=new Peer("adivina-"+code);
+ peer.on("open",()=>{$("code").textContent=code;$("hstat").textContent="Sala lista. Comparte el código o los enlaces."});
+ peer.on("error",e=>{if(e.type==="unavailable-id")openHost();else $("hstat").textContent="Error: "+e.type});
+ peer.on("connection",c=>{c.on("data",d=>onData(c,d));c.on("close",()=>{conns=conns.filter(x=>x!==c);push()})})}
+const base=()=>location.origin+location.pathname;
+const copy=(t,b)=>navigator.clipboard.writeText(t).then(()=>{const o=b.textContent;b.textContent="✓ Copiado";setTimeout(()=>b.textContent=o,1500)});
+$("cpP").onclick=()=>copy(`${base()}?c=${code}&r=player`,$("cpP"));$("cpV").onclick=()=>copy(`${base()}?c=${code}&r=viewer`,$("cpV"));
+const bc=(m,only)=>conns.forEach(c=>{if(c.open&&(!only||only(c)))c.send(m)});
+const online=()=>conns.filter(c=>c.open&&c.meta&&c.meta.role==="player").map(c=>c.meta.name);
+function onData(c,d){
+ if(d.t==="hello"){const role=d.role==="viewer"?"viewer":"player",name=(d.name||"").trim().slice(0,16);
+  if(role==="player"){if(!name)return c.send({t:"err",m:"Nombre inválido"});
+   if(online().includes(name))return c.send({t:"err",m:"Ese nombre ya está en uso"});
+   if(!sc[name])sc[name]={p:0,ok:false}}
+  c.meta={role,name};conns.push(c);c.send({t:"ok"});c.send({t:"hist",h:hist});push()}
+ else if(d.t==="guess"&&c.meta&&c.meta.role==="player"&&ph==="play"){const o=sc[c.meta.name];if(!o||o.ok)return;
+  const ok=norm(d.text)===norm(word);let f={t:"feed",name:c.meta.name,text:ok?"":String(d.text).slice(0,60),ok};
+  if(ok){const n=Object.values(sc).filter(x=>x.ok).length;o.p+=Math.round(300*left/T)+([200,120,70,40][n]||20);o.ok=true}
+  bc(f,x=>x.meta&&x.meta.role==="viewer");addFeed(f);push()}}
+function hint(){const L=[...word].filter(c=>c!==" ").length,mx=Math.max(0,Math.min(Math.floor(L/2),L-1)),el=T-left;
+ const k=el<T*.3||!mx?0:Math.min(mx,1+Math.floor((el-T*.3)/((T*.65)/mx))),rev=new Set(order.slice(0,k));
+ return [...word].map((c,i)=>c===" "?"  ":(rev.has(i)?c.toUpperCase():"_")).join(" ")}
+function push(){const on=online(),s={ph,r:ri+1,n:words.length,l:left,h:ph==="wait"?"":hint(),
+  sc:Object.entries(sc).map(([n,o])=>[n,o.p,o.ok,on.includes(n)])};
+ bc({t:"state",s:{...s,w:(ph==="rev"||ph==="end")?word:""}});
+ if(mode==="host"){if(ph==="wait")$("lobby").textContent=`Jugadores: ${on.join(", ")||"ninguno"} · Visores: ${conns.filter(c=>c.meta&&c.meta.role==="viewer").length}`;
+  else render({...s,w:word,hw:word})}}
+function clearAll(){hist=[];clr();bc({t:"d",c:"!"})}
+function startRound(){word=words[ri];order=[...word].map((c,i)=>c===" "?-1:i).filter(i=>i>=0).sort(()=>Math.random()-.5);
+ Object.values(sc).forEach(o=>o.ok=false);left=T;ph="play";clearAll();$("feed").innerHTML="";bc({t:"feedclr"});push()}
+function endRound(){ph="rev";push();setTimeout(()=>{ri++;if(ri>=words.length){ri=words.length-1;ph="end";push()}else startRound()},5000)}
+$("start").onclick=()=>{words=$("words").value.split("\n").map(s=>s.trim()).filter(Boolean);
+ if(!words.length)return alert("Agrega al menos una palabra");
+ if(!online().length&&!confirm("Aún no hay jugadores conectados. ¿Iniciar igual?"))return;
+ $("tools").classList.remove("hide");$("wline").classList.remove("hide");ri=0;startRound()};
+setInterval(()=>{if(mode!=="host"||ph==="wait")return;
+ if(ph==="play"){left--;const on=online(),act=on.map(n=>sc[n]);
+  if(left<=0||(act.length&&act.every(o=>o.ok))){left=Math.max(left,0);endRound();return}}push()},1000);
+$("wtog").onclick=()=>{wordShown=!wordShown;$("wtog").textContent=wordShown?"🙈 Ocultar":"👁 Ver";render({...lastS})};
+/* lienzo del dibujador */
+const cols=["#000000","#e63946","#ff9f1c","#ffd60a","#2a9d8f","#3a86ff","#8338ec","#8d5524","#ff69b4","#ffffff"];
+cols.forEach((c,i)=>{const b=document.createElement("button");b.className="sw"+(i?"":" on");b.style.background=c;
+ b.onclick=()=>{color=c;erase=false;document.querySelectorAll(".sw").forEach(x=>x.classList.remove("on"));b.classList.add("on")};$("tools").prepend(b)});
+$("eraser").onclick=()=>{erase=!erase;$("eraser").textContent=erase?"✏️ Lápiz":"🧽 Borrador"};
+$("clear").onclick=clearAll;
+const pos=e=>{const r=cv.getBoundingClientRect();return[Math.round((e.clientX-r.left)*1200/r.width),Math.round((e.clientY-r.top)*700/r.height)]};
+const cc=()=>erase?"#ffffff":color,cw=()=>+$("size").value*(erase?2:1);
+function emitSeg(p){const m={t:"d",c:cc(),w:cw(),p};hist.push({c:m.c,w:m.w,p});bc(m)}
+cv.onpointerdown=e=>{if(mode!=="host"||ph!=="play")return;drawing=true;cv.setPointerCapture(e.pointerId);const p=pos(e);pending=p;seg(cc(),cw(),p);emitSeg(p)};
+cv.onpointermove=e=>{if(!drawing)return;const p=pos(e),pv=pending.slice(-2);seg(cc(),cw(),[...pv,...p]);pending.push(...p)};
+cv.onpointerup=cv.onpointercancel=()=>{drawing=false};
+setInterval(()=>{if(pending.length>2){emitSeg(pending.slice(0,120));pending=pending.slice(-2)}},70);
+</script></body></html>
